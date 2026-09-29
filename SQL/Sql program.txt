@@ -1,0 +1,456 @@
+-- ============================================================
+-- BANK LOAN CREDIT RISK ANALYTICS
+-- Database: MySQL
+-- ============================================================
+
+
+-- ============================================================
+-- 1. CREATE DATABASE
+-- ============================================================
+
+CREATE DATABASE IF NOT EXISTS bank_loan_credit_risk;
+
+USE bank_loan_credit_risk;
+
+
+-- ============================================================
+-- 2. CREATE TABLE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS loan_data (
+    id INT,
+    loan_amnt DECIMAL(12,2),
+    funded_amnt DECIMAL(12,2),
+    funded_amnt_inv DECIMAL(12,2),
+    term VARCHAR(20),
+    int_rate DECIMAL(6,2),
+    installment DECIMAL(12,2),
+    grade VARCHAR(5),
+    sub_grade VARCHAR(5),
+    emp_length VARCHAR(30),
+    home_ownership VARCHAR(30),
+    annual_inc DECIMAL(15,2),
+    verification_status VARCHAR(50),
+    issue_d VARCHAR(20),
+    loan_status INT,
+    loan_condition VARCHAR(20),
+    purpose VARCHAR(100),
+    title VARCHAR(255),
+    addr_state VARCHAR(10),
+    dti DECIMAL(10,2),
+    dti_band VARCHAR(30),
+    delinq_2yrs INT,
+    inq_last_6mths INT,
+    open_acc INT,
+    pub_rec INT,
+    revol_bal DECIMAL(15,2),
+    revol_util DECIMAL(10,2),
+    total_acc INT,
+    out_prncp DECIMAL(15,2),
+    out_prncp_inv DECIMAL(15,2),
+    total_pymnt DECIMAL(15,2),
+    total_pymnt_inv DECIMAL(15,2),
+    total_rec_prncp DECIMAL(15,2),
+    total_rec_int DECIMAL(15,2),
+    total_rec_late_fee DECIMAL(15,2),
+    recoveries DECIMAL(15,2),
+    collection_recovery_fee DECIMAL(15,2),
+    last_pymnt_amnt DECIMAL(15,2),
+    pub_rec_bankruptcies INT,
+    loan_year INT,
+    loan_month INT
+);
+
+
+-- ============================================================
+-- 3. DATA VALIDATION
+-- ============================================================
+
+SELECT COUNT(*) AS total_rows
+FROM loan_data;
+
+
+SELECT *
+FROM loan_data
+LIMIT 10;
+
+
+-- Check numeric interest-rate values
+SELECT
+    COUNT(*) AS total_rows,
+    COUNT(int_rate) AS int_rate_values,
+    MIN(int_rate) AS minimum_interest_rate,
+    MAX(int_rate) AS maximum_interest_rate,
+    ROUND(AVG(int_rate), 2) AS average_interest_rate
+FROM loan_data;
+
+
+-- Check loan amounts
+SELECT
+    COUNT(*) AS total_loans,
+    SUM(loan_amnt) AS total_loan_amount,
+    SUM(funded_amnt) AS total_funded_amount,
+    SUM(funded_amnt_inv) AS total_investor_funded_amount
+FROM loan_data;
+
+
+-- ============================================================
+-- 4. CREATE ANALYTICAL VIEW
+-- ============================================================
+
+CREATE OR REPLACE VIEW v_loan_data AS
+SELECT
+    id,
+    loan_amnt,
+    funded_amnt,
+    funded_amnt_inv,
+    term,
+    int_rate,
+    installment,
+    grade,
+    sub_grade,
+    emp_length,
+    home_ownership,
+    annual_inc,
+    verification_status,
+    issue_d,
+    loan_status,
+    loan_condition,
+    purpose,
+    title,
+    addr_state,
+    dti,
+    dti_band,
+    delinq_2yrs,
+    inq_last_6mths,
+    open_acc,
+    pub_rec,
+    revol_bal,
+    revol_util,
+    total_acc,
+    out_prncp,
+    out_prncp_inv,
+    total_pymnt,
+    total_pymnt_inv,
+    total_rec_prncp,
+    total_rec_int,
+    total_rec_late_fee,
+    recoveries,
+    collection_recovery_fee,
+    last_pymnt_amnt,
+    pub_rec_bankruptcies,
+    loan_year,
+    loan_month
+FROM loan_data;
+
+
+-- Test View
+
+SELECT *
+FROM v_loan_data
+LIMIT 10;
+
+
+-- ============================================================
+-- 5. PORTFOLIO OVERVIEW
+-- ============================================================
+
+SELECT
+    COUNT(id) AS total_loans,
+    SUM(loan_amnt) AS total_loan_amount,
+    SUM(funded_amnt) AS total_funded_amount,
+    SUM(total_pymnt) AS total_received
+FROM v_loan_data;
+
+
+-- ============================================================
+-- 6. GOOD VS BAD LOANS
+-- ============================================================
+
+SELECT
+    loan_condition,
+    COUNT(id) AS total_loans,
+
+    ROUND(
+        COUNT(id) * 100.0 /
+        SUM(COUNT(id)) OVER(),
+        2
+    ) AS portfolio_percentage
+
+FROM v_loan_data
+
+GROUP BY loan_condition;
+
+
+-- ============================================================
+-- 7. DEFAULT RATE BY LOAN GRADE
+-- ============================================================
+
+SELECT
+    grade,
+    COUNT(id) AS total_loans,
+
+    SUM(
+        CASE
+            WHEN loan_condition = 'Bad Loan'
+            THEN 1
+            ELSE 0
+        END
+    ) AS bad_loans,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY grade
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 8. DEFAULT RATE BY PURPOSE
+-- ============================================================
+
+SELECT
+    purpose,
+    COUNT(id) AS total_loans,
+    SUM(funded_amnt) AS funded_amount,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY purpose
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 9. DEFAULT RATE BY DTI BAND
+-- ============================================================
+
+SELECT
+    dti_band,
+    COUNT(id) AS total_loans,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY dti_band
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 10. BAD LOAN EXPOSURE BY HOME OWNERSHIP
+-- ============================================================
+
+SELECT
+    home_ownership,
+    COUNT(id) AS total_loans,
+    SUM(funded_amnt) AS funded_amount,
+
+    SUM(
+        CASE
+            WHEN loan_condition = 'Bad Loan'
+            THEN funded_amnt
+            ELSE 0
+        END
+    ) AS bad_loan_exposure
+
+FROM v_loan_data
+
+GROUP BY home_ownership
+
+ORDER BY bad_loan_exposure DESC;
+
+
+-- ============================================================
+-- 11. RECOVERY RATE
+-- ============================================================
+
+SELECT
+    ROUND(
+        SUM(total_pymnt) * 100.0 /
+        NULLIF(SUM(funded_amnt), 0),
+        2
+    ) AS recovery_rate
+
+FROM v_loan_data;
+
+
+-- ============================================================
+-- 12. FUNDING TREND BY YEAR AND MONTH
+-- ============================================================
+
+SELECT
+    loan_year,
+    loan_month,
+    SUM(funded_amnt) AS total_funded
+
+FROM v_loan_data
+
+GROUP BY
+    loan_year,
+    loan_month
+
+ORDER BY
+    loan_year,
+    loan_month;
+
+
+-- ============================================================
+-- 13. BAD LOAN EXPOSURE BY GRADE
+-- ============================================================
+
+SELECT
+    grade,
+
+    SUM(
+        CASE
+            WHEN loan_condition = 'Bad Loan'
+            THEN funded_amnt
+            ELSE 0
+        END
+    ) AS bad_loan_exposure
+
+FROM v_loan_data
+
+GROUP BY grade
+
+ORDER BY bad_loan_exposure DESC;
+
+
+-- ============================================================
+-- 14. STATE-WISE LOAN ANALYSIS
+-- ============================================================
+
+SELECT
+    addr_state,
+    COUNT(id) AS total_loans,
+    SUM(funded_amnt) AS funded_amount,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY addr_state
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 15. INTEREST RATE BY LOAN GRADE
+-- ============================================================
+
+SELECT
+    grade,
+    COUNT(id) AS total_loans,
+    ROUND(AVG(int_rate), 2) AS average_interest_rate,
+    ROUND(MIN(int_rate), 2) AS minimum_interest_rate,
+    ROUND(MAX(int_rate), 2) AS maximum_interest_rate
+
+FROM v_loan_data
+
+GROUP BY grade
+
+ORDER BY average_interest_rate DESC;
+
+
+-- ============================================================
+-- 16. LOAN TERM ANALYSIS
+-- ============================================================
+
+SELECT
+    term,
+    COUNT(id) AS total_loans,
+    SUM(funded_amnt) AS funded_amount,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY term
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 17. VERIFICATION STATUS ANALYSIS
+-- ============================================================
+
+SELECT
+    verification_status,
+    COUNT(id) AS total_loans,
+    SUM(funded_amnt) AS funded_amount,
+
+    ROUND(
+        SUM(
+            CASE
+                WHEN loan_condition = 'Bad Loan'
+                THEN 1
+                ELSE 0
+            END
+        ) * 100.0 / COUNT(id),
+        2
+    ) AS default_rate
+
+FROM v_loan_data
+
+GROUP BY verification_status
+
+ORDER BY default_rate DESC;
+
+
+-- ============================================================
+-- 18. FINAL DATA COUNT
+-- ============================================================
+
+SELECT COUNT(*) AS total_rows
+FROM loan_data;
